@@ -3,7 +3,7 @@
 
 unsigned long tickCount;
 
-int pic18_i2c_enable(void) {
+char pic18_i2c_enable(void) {
     TRISD |= 0b01100000; //MMSP2 uses RD5 as SDA, RD6 as SCL, both set as inputs
     SSP2ADD = 19; //400kHz
     SSP2CON1bits.SSPM = 0b1000; //I2C Master mode
@@ -11,12 +11,12 @@ int pic18_i2c_enable(void) {
     return 0;
 }
 
-int pic18_i2c_disable(void) {
+char pic18_i2c_disable(void) {
     SSP2CON1bits.SSPEN = 0; //Disable MSSP
     return 0;
 }
 
-int pic18_i2c_write(unsigned char slave_addr, unsigned char reg_addr, unsigned char length, unsigned char const *data) {
+char pic18_i2c_write(unsigned char slave_addr, unsigned char reg_addr, unsigned char const *data, unsigned char length) {
     SSP2CON2bits.SEN = 1;
     while (SSP2CON2bits.SEN == 1);
     SSP2BUF = slave_addr << 1;
@@ -39,7 +39,7 @@ int pic18_i2c_write(unsigned char slave_addr, unsigned char reg_addr, unsigned c
     return 0;
 }
 
-int pic18_i2c_read(unsigned char slave_addr, unsigned char reg_addr, unsigned char length, unsigned char *data) {
+char pic18_i2c_read(unsigned char slave_addr, unsigned char reg_addr, unsigned char *data, unsigned char length) {
     SSP2CON2bits.SEN = 1;
     while (SSP2CON2bits.SEN == 1);
     SSP2BUF = slave_addr << 1;
@@ -74,17 +74,10 @@ int pic18_i2c_read(unsigned char slave_addr, unsigned char reg_addr, unsigned ch
     return 0;
 }
 
-int pic18_delay_ms(unsigned long num_ms) {
+char pic18_delay_ms(unsigned long num_ms) {
     while (num_ms > 0) {
         __delay_ms(1);
         --num_ms;
     }
-    return 0;
-}
-
-int pic18_get_ms(unsigned long *count) {
-    INTCONbits.GIE = 0;
-    *count = tickCount;
-    INTCONbits.GIE = 1;
     return 0;
 }

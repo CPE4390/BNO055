@@ -29,12 +29,9 @@
 #pragma config PMPMX = DEFAULT  // PMP Pin Multiplex bit (PMP port pins connected to EMB (PORTD and PORTE))
 #pragma config MSSPMSK = MSK7   // MSSP Address Masking Mode Select bit (7-Bit Address Masking mode enable)
 
-//Defines for BNO - need to be before .h is included
-//#define MACHINE_16_BIT
-
 //Project includes
 #include "../src/BNO055_I2C.h"
-//#include "../src/driver/bno055.h"
+#include "../src/driver/bno055.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -42,11 +39,7 @@
 Connections:
         Master RD5 <-> SDA
         Master RD6 <-> SCL
-        Master RB1 <-> INT
  */
-
-volatile char dataReady = 0;
-
 
 void main(void) {
     OSCTUNEbits.PLLEN = 1;
@@ -63,51 +56,56 @@ void main(void) {
     TXSTA1bits.TXEN = 1;
     printf("Starting\r\n");
 
-    //setup INT1 for falling edge
+    //setup INT1 for rising edge
     TRISB |= 0b00000010;
-    INTCON2bits.INTEDG1 = 0;
+    INTCON2bits.INTEDG1 = 1;
     INTCON3bits.INT1IE = 1;
     INTCON3bits.INT1IF = 0;
 
-    //setup Timer2 for 1ms ticks
-    T2CONbits.T2CKPS = 0b10; //1:16 prescale
-    T2CONbits.TOUTPS = 4; //1:5 postscale gives 100 kHz count rate
-    PR2 = 100;
-    TMR2 = 0;
-    tickCount = 0;
-    PIR1bits.TMR2IF = 0;
-    PIE1bits.TMR2IE = 1;
-    INTCONbits.PEIE = 1;
+    //Enable interrupts
+    //INTCONbits.PEIE = 1;
     //INTCONbits.GIE = 1;
-    T2CONbits.TMR2ON = 1;
-    
+
     unsigned char buff[6];
     pic18_i2c_enable();
-    pic18_i2c_read(0x29, 0, 6, buff);
+    pic18_i2c_read(0x29, 0, buff, 6);
     printf("IDs: %02x %02x %02x %02x\r\n", buff[0], buff[1], buff[2], buff[3]);
     printf("SW Version %02x%02x\r\n", buff[5], buff[4]);
-    pic18_i2c_read(0x29, 0x36, 1, buff);
+    pic18_i2c_read(0x29, 0x36, buff, 1);
     printf("POST result: %02x\r\n", buff[0] & 0x0f);
-    
-    //struct bno055_t myBNO;
-    //myBNO.dev_addr = BNO055_I2C_ADDR1;
-    
+
+    struct bno055_t myBNO;
+    myBNO.dev_addr = BNO055_I2C_ADDR2; //0x29
+    myBNO.bus_read = pic18_i2c_read;
+    myBNO.bus_write = pic18_i2c_write;
+    myBNO.delay_msec = pic18_delay_ms;
+    bno055_init(&myBNO);
+    printf("IDs: %02x %02x %02x %02x\r\n", myBNO.chip_id, myBNO.accel_rev_id, myBNO.mag_rev_id, myBNO.gyro_rev_id);
+    printf("SW Version %04x\r\n", myBNO.sw_rev_id);
+    bno055_set_operation_mode(BNO055_OPERATION_MODE_IMUPLUS);
     while (1) {
-        if (dataReady) {
-            dataReady = 0;
-            LATDbits.LATD0 ^= 1;
-            
-        }
+        __delay_ms(500);
+        struct bno055_euler_float_t eulerAngles;
+        bno055_convert_float_euler_hpr_deg(&eulerAngles);
+        printf("\froll= %.1f\r\n", eulerAngles.r);
+        printf("pitch = %.1f\r\n", eulerAngles.p);
+        printf("yaw = %.1f\r\n", eulerAngles.h);
+        unsigned char accelCalib = 0;
+        unsigned char gyroCalib = 0;
+        unsigned char magCalib = 0;
+        unsigned char sysCalib = 0;
+        bno055_get_accel_calib_stat(&accelCalib);
+        bno055_get_gyro_calib_stat(&gyroCalib);
+        bno055_get_mag_calib_stat(&magCalib);
+        bno055_get_sys_calib_stat(&sysCalib);
+        printf("Calibration a:%d g:%d m:%d sys:%d\r\n", accelCalib, gyroCalib, magCalib, sysCalib);
+        LATDbits.LATD0 ^= 1;
     }
 }
 
 void __interrupt(high_priority) HighIsr(void) {
-    if (PIR1bits.TMR2IF == 1) {
-        ++tickCount;
-        PIR1bits.TMR2IF = 0;
-    }
     if (INTCON3bits.INT1IF == 1) {
-        dataReady = 1;
+        //Handle BNO055 interrupt signal
         INTCON3bits.INT1IF = 0;
     }
 }
