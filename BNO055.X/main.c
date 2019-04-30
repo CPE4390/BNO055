@@ -39,6 +39,7 @@
 Connections:
         Master RD5 <-> SDA
         Master RD6 <-> SCL
+    Needs pull-ups on SDA and SCL.  There are none on the board
  */
 
 void main(void) {
